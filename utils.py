@@ -5,7 +5,7 @@ try:
 except ImportError:
     from PySide2 import QtWidgets, QtGui, QtCore
     
-
+"コメント追加"
 
 # ---------------------------------------------------------------------------------- #
 # COMMON
