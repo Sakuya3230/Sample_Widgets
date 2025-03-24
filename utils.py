@@ -5,7 +5,7 @@ try:
 except ImportError:
     from PySide2 import QtWidgets, QtGui, QtCore
     
-"コメント追加"
+
 
 # ---------------------------------------------------------------------------------- #
 # COMMON
@@ -35,6 +35,7 @@ class CollapsibleFrame(QtWidgets.QWidget):
     kPlusMinus      = 2
     kCircle         = 3
 
+    # override method
     def __init__(self, title="Title", color=QtGui.QColor(187, 187, 187), parent=None):
         super(CollapsibleFrame, self).__init__(parent)
         self._title                 = title
@@ -88,7 +89,6 @@ class CollapsibleFrame(QtWidgets.QWidget):
         self.icon_animation.setDuration(200)
         self.icon_animation.valueChanged.connect(self._updateIconRotation)
 
-    # override method
     def mousePressEvent(self, event):
         """タイトルバーのクリックで展開・折りたたみ"""
         if event.pos().y() < self._title_bar_height and self._is_collapsable:
@@ -684,180 +684,852 @@ class FlowLayout(QtWidgets.QLayout):
             
         return y + row_height - rect.y()
 
+# ----------------------------------------------------------------------------------
+# 数値スライダー
+# ----------------------------------------------------------------------------------
+class FloatSlider(QtWidgets.QWidget):
+    sliderMoved = QtCore.Signal(float)
+    sliderPressed = QtCore.Signal()
+    sliderReleased = QtCore.Signal()
+    valueChanged = QtCore.Signal(float)
+    
+    # override method
+    def __init__(self, parent=None):
+        super(FloatSlider, self).__init__(parent)
+        self.setMinimumHeight(20)
+        self.layout = QtWidgets.QVBoxLayout(self)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self._set_line_edit()
+        
+        self._value = 0.5
+        self._maximum = 1.0
+        self._minimum = 0.0
+        self._single_step  = 0.001
+        self._decimals = 3
+        
+        self._color = QtGui.QColor(71, 114, 179)
+        self._text_color = QtGui.QColor(230, 230, 230)
+        self._background_color = QtGui.QColor(84, 84, 84)
+        
+        self._pressed = False
+        self._pressed_button = QtCore.Qt.NoButton
+        self._moved = False
+        self._hovered = False
+
+    def mousePressEvent(self, event):
+        if event.button() == QtCore.Qt.LeftButton:
+            self._pressed = True
+            self._pressed_button = QtCore.Qt.LeftButton
+            self.sliderPressed.emit()
+            self.update()
+
+    def mouseMoveEvent(self, event):
+        if self._pressed_button == QtCore.Qt.LeftButton:
+            self._moved = True
+            self.setCursor(QtCore.Qt.BlankCursor)
+            rect = self.rect()
+            slider_range = self._maximum - self._minimum
+            pos = max(0, min(rect.width(), event.x() - rect.x()))
+            value = self._minimum + (float(pos) / float(rect.width())) * slider_range
+            
+            if self._single_step > 0:
+                self._value = round(round(value / self._single_step) * self._single_step, self._decimals)
+
+            self.sliderMoved.emit(self._value)
+            self.update()
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == QtCore.Qt.LeftButton:
+            self._pressed = False
+            self._pressed_button = QtCore.Qt.NoButton
+            # スライダーが動かなかった場合に入力切り替え
+            if not self._moved:
+                self._activate_edit_mode()
+            else:
+                self.valueChanged.emit(self._value)
+            self._moved = False
+            self.unsetCursor()
+            self.sliderReleased.emit()
+            self.update()
+
+    def enterEvent(self, event):
+        """マウスがウィジェットに入ったとき"""
+        self._hovered = True
+        self.update()
+
+    def leaveEvent(self, event):
+        """マウスがウィジェットから離れたとき"""
+        self._hovered = False
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        painter.begin(self)
+        rect = self.rect()
+
+        # 背景
+        if self._pressed:
+            painter.setBrush(QtGui.QColor(34, 34, 34))
+        elif self._hovered:
+            painter.setBrush(QtGui.QColor(120, 120, 120))
+        else:
+            painter.setBrush(self._background_color)
+        painter.setPen(QtCore.Qt.NoPen)
+        painter.drawRoundedRect(QtCore.QRectF(0, 0, rect.width(), rect.height()), 4, 4)
+
+        # くり抜きようのパス
+        path = QtGui.QPainterPath()
+        path.addRoundedRect(QtCore.QRectF(0, 0, rect.width(), rect.height()), 4, 4)
+        painter.setClipPath(path)
+
+        # スライダー
+        painter.setBrush(self._color)
+        painter.setPen(QtCore.Qt.NoPen)
+        width = (self._value - self._minimum) / (self._maximum - self._minimum) * rect.width()
+        painter.drawRect(QtCore.QRect(0, 0, width, rect.height()))
+
+        # 数値
+        painter.setPen(self._text_color)
+        painter.setFont(QtGui.QFont('Lucida Sans Unicode', 10))
+        painter.drawText(rect, QtCore.Qt.AlignCenter, "{:.{}f}".format(self._value, self._decimals))
+
+        painter.end()
+    
+    # public method
+    def value(self):
+        return self._value
+    
+    def maximum(self):
+        return self._maximum
+    
+    def minimum(self):
+        return self._minimum
+    
+    def singleStep(self):
+        return self._single_step
+    
+    def decimals(self):
+        return self._decimals
+    
+    def color(self):
+        return self._color
+    
+    def textColor(self):
+        return self._text_color
+    
+    def backgroundColor(self):
+        return self._background_color
+    
+    def setValue(self, value):
+        self._value = value
+    
+    def setMaximum(self, value):
+        self._maximum = value
+    
+    def setMinimum(self, value):
+        self._minimum = value
+    
+    def setRange(self, min_value, max_value):
+        self._minimum = min_value
+        self._maximum = max_value
+    
+    def setSingleStep(self, step):
+        self._single_step = step
+        
+    def setDecimals(self, decimals):
+        self._decimals = decimals
+        
+    def setColor(self, color):
+        self._color = color
+    
+    def setTextColor(self, color):
+        self._text_color = color
+    
+    def setBackgroundColor(self, color):
+        self._background_color = color
+        
+    # private method
+    def _set_line_edit(self):
+        # 数値入力用の QLineEdit
+        self._line_edit = QtWidgets.QLineEdit(self)
+        self._line_edit.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
+        self._line_edit.setFont(QtGui.QFont('Lucida Sans Unicode', 10))
+        self._line_edit.setValidator(QtGui.QDoubleValidator())
+        self._line_edit.setVisible(False)
+        self._line_edit.setObjectName("sliderLineEdit")
+        self._line_edit.setStyleSheet("#sliderLineEdit {border: none; border-radius: 5px;}")
+        self._line_edit.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Preferred)
+        self._line_edit.returnPressed.connect(self._apply_text_value)
+        self._line_edit.editingFinished.connect(self._apply_text_value)
+        self.layout.addWidget(self._line_edit)
+
+    def _activate_edit_mode(self):
+        """スライダーを入力モードに切り替え"""
+        self._line_edit.setText("{:.{}f}".format(self._value, self._decimals))
+        self._line_edit.setVisible(True)
+        self._line_edit.setFocus()
+        self._line_edit.selectAll()
+        self.update()
+
+    def _apply_text_value(self):
+        """入力値を適用しスライダーに戻す"""
+        value = float(self._line_edit.text())
+        self._value = round(max(self._minimum, min(self._maximum, value)), self._decimals)
+        self._line_edit.setVisible(False)
+        self.setFocus()
+        self.valueChanged.emit(self._value)
+        self.update()
+
+class FloatSymbolSlider(FloatSlider):
+    def __init__(self, parent=None):
+        super(FloatSymbolSlider, self).__init__(parent)
+        self._hovered_left_symbol = False
+        self._hovered_right_symbol = False
+        self._hovered_center = False
+        
+        self.setAttribute(QtCore.Qt.WA_Hover)
+
+    def event(self, event):
+        """イベントフィルター (ホバー検出)"""
+        if event.type() == QtCore.QEvent.HoverMove:
+            self.checkHover(event.pos())
+        return super().event(event)
+        
+    def checkHover(self, pos):
+        """ホバー状態をチェック"""
+        if not self._moved:
+            left_rect = QtCore.QRect(0, 0, 16, self.height())
+            right_rect = QtCore.QRect(self.width() - 16, 0, 16, self.height())
+
+            new_hover_left = left_rect.contains(pos)
+            new_hover_right = right_rect.contains(pos)
+
+            if new_hover_left != self._hovered_left_symbol:
+                self._hovered_left_symbol = new_hover_left
+            elif new_hover_right != self._hovered_right_symbol:
+                self._hovered_right_symbol = new_hover_right
+            elif not new_hover_left and not new_hover_right:
+                self.setCursor(QtCore.Qt.SizeHorCursor)
+                self._hovered_center = True
+            else:
+                self.setCursor(QtCore.Qt.ArrowCursor)
+                self._hovered_center = False
+            self.update()
+        
+    def mouseReleaseEvent(self, event):
+        if event.button() == QtCore.Qt.LeftButton:
+            self._pressed = False
+            self._pressed_button = QtCore.Qt.NoButton
+            if not self._moved:
+                if event.x() < 16:
+                    self.setValue(max(self._minimum, self._value - self._single_step))
+                elif event.x() > self.width() - 16:
+                    self.setValue(min(self._maximum, self._value + self._single_step))
+                elif not self._moved:
+                    self._activate_edit_mode()
+                else:
+                    self.valueChanged.emit(self._value)
+                    
+            self._moved = False
+            self.unsetCursor()
+            self.sliderReleased.emit()
+            self.update()
+            
+    def leaveEvent(self, event):
+        self._hovered_left_symbol = False
+        self._hovered_right_symbol = False
+        self._hovered_center = False
+        self.unsetCursor()
+        super(FloatSymbolSlider, self).leaveEvent(event)
+        
+    def paintEvent(self, event):        
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        painter.begin(self)
+        rect = self.rect()
+        
+        # 背景
+        if self._pressed:
+            painter.setBrush(QtGui.QColor(40, 40, 40))
+        elif self._hovered_center:
+            painter.setBrush(QtGui.QColor(120, 120, 120))
+        else:
+            painter.setBrush(self._background_color)
+        painter.setPen(QtCore.Qt.NoPen)
+        painter.drawRoundedRect(QtCore.QRectF(0, 0, rect.width(), rect.height()), 4, 4)
+        
+        # くり抜きようのパス
+        path = QtGui.QPainterPath()
+        path.addRoundedRect(QtCore.QRectF(0, 0, rect.width(), rect.height()), 4, 4)
+        painter.setClipPath(path)
+        
+        if self._hovered:
+            # シンボル
+            painter.setPen(QtCore.Qt.NoPen)         
+             
+            if self._moved:
+                painter.setBrush(QtGui.QColor(34, 34, 34))
+            elif self._hovered_left_symbol:
+                painter.setBrush(QtGui.QColor(120, 120, 120))
+            else:
+                painter.setBrush(QtGui.QColor(100, 100, 100))
+            painter.drawRect(QtCore.QRect(0, 0, 16, rect.height()))
+            
+            if self._moved:
+                painter.setBrush(QtGui.QColor(34, 34, 34))
+            elif self._hovered_right_symbol:
+                painter.setBrush(QtGui.QColor(120, 120, 120))
+            else:
+                painter.setBrush(QtGui.QColor(100, 100, 100))
+            painter.drawRect(QtCore.QRect(rect.width() - 16, 0, 16, rect.height()))
+            
+            # 矢印
+            path = QtGui.QPainterPath()
+            # left arrow
+            center = QtCore.QPoint(8, rect.height() / 2)
+            path.moveTo(center.x() + 2, center.y() - 3)
+            path.lineTo(center.x() - 2, center.y())
+            path.lineTo(center.x() + 2, center.y() + 3)
+            
+            # right arrow
+            center = QtCore.QPoint(rect.width() - 8, rect.height() / 2)
+            path.moveTo(center.x() - 2, center.y() - 3)
+            path.lineTo(center.x() + 2, center.y())
+            path.lineTo(center.x() - 2, center.y() + 3)
+        
+            pen = QtGui.QPen(QtGui.QColor(222, 222, 222))
+            pen.setWidth(2)
+            painter.setPen(pen)
+            painter.setBrush(QtCore.Qt.NoBrush)
+            painter.drawPath(path)
+        
+        # 数値
+        painter.setPen(self._text_color)
+        painter.setFont(QtGui.QFont('Lucida Sans Unicode', 10))
+        painter.drawText(rect, QtCore.Qt.AlignCenter, "{:.{}f}".format(self._value, self._decimals))
+        
+        painter.end()
+
+# ----------------------------------------------------------------------------------
+# シェルフ
+# ----------------------------------------------------------------------------------
+class ShelfButton(QtWidgets.QPushButton):
+    def __init__(self, parent=None, c=None, dcc=None, i=None, ann=None, iol=None, olc=None, olb=None):
+        super(ShelfButton, self).__init__(parent)
+        self._command = c
+        self._doubleClickCommand = dcc
+        self._icon = i
+        self._annotation = ann
+        self._iconLabel = iol
+        self._iconLabelColor = olc
+        self._labelBackground = olb
+        self._clicked = False
+        
+        self.setFixedSize(QtCore.QSize(32, 32))
+        self.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        self.setIconSize(QtCore.QSize(32, 32))
+        self.setToolTip(self._annotation)
+        self.setStyleSheet("QPushButton{border-style:none;}")
+        
+        self.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(self.contextMenu)
+        self.setAttribute(QtCore.Qt.WA_TranslucentBackground)
+        rect = self.rect()
+        
+        # pixmap = self.prepare_icon(self._icon, 32)
+        pixmap = QtGui.QPixmap(self._icon)
+        if self._iconLabel:
+            painter = QtGui.QPainter(pixmap)
+            label_bg_color = [round(i/(1/255)) for i in self._labelBackground]
+            painter.setBrush(QtGui.QColor(*label_bg_color))
+            painter.setPen(QtCore.Qt.NoPen)
+            painter.drawRect(0,  rect.height()*0.6, rect.width(), rect.height())
+            
+            label_color = [round(i/(1/255)) for i in self._iconLabelColor]
+            painter.setPen(QtGui.QColor(*label_color))
+            painter.setFont(QtGui.QFont(u"メイリオ", 7, QtGui.QFont.Bold, False))
+            painter.drawText(rect, QtCore.Qt.AlignBottom|QtCore.Qt.AlignCenter, self._iconLabel)
+            painter.end()
+
+        self._icon_normal = QtGui.QIcon(pixmap)
+        painter = QtGui.QPainter(pixmap)
+        painter.setCompositionMode(QtGui.QPainter.CompositionMode_SourceAtop)
+        painter.setBrush(QtGui.QColor(255, 255, 255, 50))
+        painter.drawRect(pixmap.rect())
+        if self._iconLabel:
+            painter.setCompositionMode(QtGui.QPainter.CompositionMode_SourceOver)
+            painter.setBrush(QtGui.QColor(*label_bg_color))
+            painter.setPen(QtCore.Qt.NoPen)
+            painter.drawRect(0,  rect.height()*0.6, rect.width(), rect.height())
+            painter.setPen(QtGui.QColor(*label_color))
+            painter.setFont(QtGui.QFont(u"メイリオ", 7, QtGui.QFont.Bold, False))
+            painter.drawText(rect, QtCore.Qt.AlignBottom|QtCore.Qt.AlignCenter, iol)
+            
+        painter.end()
+        
+        self._icon_over = QtGui.QIcon(pixmap)
+        self.setIcon(self._icon_normal)
+        self.clicked.connect(self.click_command)
+        
+    def contextMenu(self, point):
+        menu = QtWidgets.QMenu(self)
+        action = menu.addAction("Option")
+        action.triggered.connect(self.option)
+        menu.addSeparator()
+        action = menu.addAction("Edit")
+        action.triggered.connect(self.editButton)
+        action = menu.addAction("Delete")
+        action.triggered.connect(self.removeButton)
+        
+        menu.exec_(self.mapToGlobal(point))
+        
+    def enterEvent(self, event):
+        self.setIcon(self._icon_over)
+        return super(ShelfButton, self).enterEvent(event)
+        
+    def leaveEvent(self, event):
+        self.setIcon(self._icon_normal)
+        return super(ShelfButton, self).leaveEvent(event)
+        
+    def click_command(self):
+        pass
+        # mel.eval(self._command)
+
+    def option(self):
+        pass
+        # mel.eval(self._doubleClickCommand)
+
+    def editButton(self):
+        print("---<Button Data>---")
+        print("command:             ", self._command)
+        print("doubleClickCommand:  ", self._doubleClickCommand)
+        print("icon:                ", self._icon)
+        print("annotation:          ", self._annotation)
+        print("iconLabel:           ", self._iconLabel)
+        print("iconLabelColor:      ", self._iconLabelColor)
+        print("labelBackground:     ", self._labelBackground)
+        
+    def removeButton(self):
+        layout = self.parent().layout()
+        index = layout.indexOf(self)
+        layout.takeAt(index)
+ 
+    def prepare_icon(self, icon_path, size):
+        """ アイコン画像を適切なサイズに加工する """
+        pixmap = QtGui.QPixmap(icon_path)
+
+        if pixmap.isNull():
+            return QtGui.QPixmap(size, size)  # 画像が無い場合のデフォルト
+
+        # 画像の透明部分をトリミング
+        cropped_pixmap = self.crop_transparent(pixmap)
+
+        # 指定サイズにフィット
+        scaled_pixmap = cropped_pixmap.scaled(size, size, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+        return scaled_pixmap
+
+    def crop_transparent(self, pixmap):
+        """ 透明部分をトリミングする """
+        img = pixmap.toImage()
+        rect = img.rect()
+
+        # 透明部分を検出してトリミング範囲を決定
+        min_x, min_y, max_x, max_y = rect.right(), rect.bottom(), rect.left(), rect.top()
+        for x in range(rect.width()):
+            for y in range(rect.height()):
+                if img.pixelColor(x, y).alpha() > 0:
+                    min_x = min(min_x, x)
+                    min_y = min(min_y, y)
+                    max_x = max(max_x, x)
+                    max_y = max(max_y, y)
+
+        # 透明部分を削除した新しいピクスマップを作成
+        cropped_img = img.copy(min_x, min_y, max_x - min_x + 1, max_y - min_y + 1)
+        return QtGui.QPixmap.fromImage(cropped_img)
+ 
+class ShelfTabLayout(QtWidgets.QWidget):
+    def __init__(self, parent=None):
+        super(ShelfTabLayout, self).__init__(parent)
+        verticalLayout_tab = QtWidgets.QVBoxLayout(self)
+        verticalLayout_tab.setSpacing(0)
+        verticalLayout_tab.setContentsMargins(5, 5, 5, 5)
+
+        self.scrollArea = QtWidgets.QScrollArea(self)
+        self.scrollArea.setFrameShape(QtWidgets.QFrame.NoFrame)
+        self.scrollArea.setWidgetResizable(True)
+        
+        self.scrollAreaWidgetContents = QtWidgets.QWidget()
+        self.flowLayout = FlowLayout(self.scrollAreaWidgetContents)
+        
+        verticalLayout_tab.addWidget(self.scrollArea)
+        self.scrollArea.setWidget(self.scrollAreaWidgetContents)
+
+        self.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(self.contextMenu)
+
+    def contextMenu(self, point):
+        menu = QtWidgets.QMenu(self)
+        action = menu.addAction("addButton")
+        action.triggered.connect(self.openAddButton)
+        
+        menu.exec_(self.mapToGlobal(point))
+
+    def addButton(self, button):
+        shelf_button = ShelfButton(
+                    c=button["command"],
+                    dcc=button["doubleClickCommand"],
+                    i=button["iconName"],
+                    ann=button["toolTips"],
+                    iol=button["iconLabel"],
+                    olc=button["iconLabelColor"],
+                    olb=[*button["labelBackground"], button["backgroundTransparency"]])
+        self.flowLayout.addWidget(shelf_button)
+
+    def openAddButton(self):
+        button = {
+                "command": "SmoothBindSkin",
+                "doubleClickCommand": "SmoothBindSkinOptions",
+                "iconName": ":/smoothSkin.png",
+                "toolTips": "SmoothBindSkin",
+                "iconLabel": "",
+                "iconLabelColor": [0.8, 0.8, 0.8],
+                "labelBackground": [0.0, 0.0, 0.0],
+                "backgroundTransparency": 0.5}
+        self.addButton(button)
+        
+    def count(self):
+        return self.flowLayout.count()
+        
+    def index(self, widget):
+        return self.flowLayout.indexOf(widget)
+        
+    def item(self, index):
+        return self.flowLayout.itemAt(index)    
+    
+class ShelfTab(QtWidgets.QWidget):
+    def __init__(self, parent=None):
+        super(ShelfTab, self).__init__(parent)
+        
+        self._tabs = []
+        self.setMinimumHeight(80)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Fixed)
+        self.verticalLayout = QtWidgets.QVBoxLayout(self)
+        # ----------------------------------------------------------------------------------
+        # TAB 
+        # ----------------------------------------------------------------------------------
+        self.tabWidget = QtWidgets.QTabWidget(self)
+        
+        """---LAYOUT------------------------------------------------------------------------"""
+        self.verticalLayout.addWidget(self.tabWidget)
+        
+    def addTab(self, name="New Tab"):
+        shelf_tab_layout = ShelfTabLayout(self.tabWidget)
+        self.tabWidget.addTab(shelf_tab_layout, name)
+        self._tabs.append(shelf_tab_layout)
+        return shelf_tab_layout
+        
+    def removeTab(self, index):
+        self.setTabOrder.removeTab(index)
+        self._tabs.pop(index)
+        return
+           
+    def addButton(self, index, shelfButton):
+        tab = self._tabs[index]
+        tab.addButton(shelfButton)
+
+    def indexOf(self, widget):
+        return self.tabWidget.indexOf(widget)
+
+    def count(self):
+        return self.tabWidget.count()
+    
+    def widget(self, index):
+        return self._tabs[index]
+        
+    def currntWidget(self):
+        return self.tabWidget.currentWidget()
+    
+    def currentIndex(self):
+        return self.tabWidget.currentIndex()
+
+    def visible(self, index, status):
+        self.tabWidget.setTabVisible(index, status)
+
+shelf_tab_items = {
+        "File": [
+                {"command": "NewScene", "doubleClickCommand": "NewSceneOptions", "iconName": ":/menuIconFile.png", "toolTips": "Create a new scene", "iconLabel": "NS", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                {"command": "OpenScene", "doubleClickCommand": "OpenSceneOptions", "iconName": ":/menuIconFile.png", "toolTips": "Open a scene", "iconLabel": "OS", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                {"command": "OptimizeScene", "doubleClickCommand": "OptimizeSceneOptions", "iconName": ":/menuIconFile.png", "toolTips": "Remove unused items", "iconLabel": "OSS", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                {"command": "Import", "doubleClickCommand": "ImportOptions", "iconName": ":/menuIconFile.png", "toolTips": "Add the file to the current scene", "iconLabel": "IMP", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                {"command": "ExportSelection", "doubleClickCommand": "ExportSelectionOptions", "iconName": ":/menuIconFile.png", "toolTips": "Export selected objects (and related info) to a new file", "iconLabel": "ES", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                {"command": "ReferenceEditor", "doubleClickCommand": "Options", "iconName": ":/menuIconFile.png", "toolTips": "Edit the references for the current scene", "iconLabel": "RE", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                {"command": "SetProject", "doubleClickCommand": "Options", "iconName": ":/menuIconFile.png", "toolTips": "Change the current project", "iconLabel": "SP", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5}
+                ],
+        "Edit": [
+                {"command": "doGroup 0 1 1", "doubleClickCommand": "GroupOptions", "iconName": ":/menuIconEdit.png", "toolTips": "Group the selected object(s)", "iconLabel": "GRP", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                {"command": "parentPreset(0,1)", "doubleClickCommand": "NewSceneOptions", "iconName": ":/menuIconEdit.png", "toolTips": "Parent the selected object(s) to the last selected object", "iconLabel": "P", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                {"command": "parent -w", "doubleClickCommand": "NewSceneOptions", "iconName": ":/menuIconEdit.png", "toolTips": "Unparent the selected object(s)", "iconLabel": "UP", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                {"command": "DeleteHistory", "doubleClickCommand": "", "iconName": ":/menuIconEdit.png", "toolTips": "Delete construction history on the selected object(s)", "iconLabel": "HIS", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                {"command": "BakeNonDefHistory", "doubleClickCommand": "", "iconName": ":/menuIconEdit.png", "toolTips": "Delete modeling history on the selected object(s)", "iconLabel": "NH", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5}                ],
+        "create": [
+                ],
+        "Modify": [
+                {"command": "FreezeTransformations", "doubleClickCommand": "", "iconName": ":/menuIconModify.png", "toolTips": "FreezeTransformations", "iconLabel": "FT", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                {"command": "ResetTransformations", "doubleClickCommand": "", "iconName": ":/menuIconModify.png", "toolTips": "ResetTransformations", "iconLabel": "RT", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                {"command": "CenterPivot", "doubleClickCommand": "", "iconName": ":/menuIconModify.png", "toolTips": "CenterPivot", "iconLabel": "CP", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                ],
+        "Display": [],
+        "Window": [
+                {"command": "NodeEditorWindow", "doubleClickCommand": "", "iconName": ":/menuIconWindow.png", "toolTips": "NodeEditorWindow", "iconLabel": "NE", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                {"command": "HypergraphHierarchyWindow", "doubleClickCommand": "", "iconName": ":/hypergraph.png", "toolTips": "HypergraphHierarchyWindow", "iconLabel": "", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                {"command": "ScriptEditor", "doubleClickCommand": "", "iconName": ":/cmdWndIcon.png", "toolTips": "ScriptEditor", "iconLabel": "", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                {"command": "ComponentEditor", "doubleClickCommand": "", "iconName": ":/menuIconWindow.png", "toolTips": "ComponentEditor", "iconLabel": "CpEd", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                {"command": "NamespaceEditor", "doubleClickCommand": "", "iconName": ":/menuIconWindow.png", "toolTips": "NamespaceEditor", "iconLabel": "NE", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                {"command": "GraphEditor", "doubleClickCommand": "", "iconName": ":/teGraphEditor.png", "toolTips": "GraphEditor", "iconLabel": "", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                {"command": "TimeEditorWindow", "doubleClickCommand": "", "iconName": ":/getCTE.png", "toolTips": "TimeEditorWindow", "iconLabel": "", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                {"command": "ShapeEditor", "doubleClickCommand": "", "iconName": ":/blendShapeEditor.png", "toolTips": "ShapeEditor", "iconLabel": "", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                {"command": "PoseEditor", "doubleClickCommand": "", "iconName": ":/poseEditor.png", "toolTips": "PoseEditor", "iconLabel": "", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                {"command": "PluginManager", "doubleClickCommand": "", "iconName": ":/menuIconWindow.png", "toolTips": "PluginManager", "iconLabel": "PM", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5}
+                ],
+        "Skeleton": [
+                {"command": "JointTool", "doubleClickCommand": "", "iconName": ":/kinJoint.png", "toolTips": "JointTool", "iconLabel": "", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                {"command": "InsertJointTool", "doubleClickCommand": "", "iconName": ":/kinInsert.png", "toolTips": "InsertJointTool", "iconLabel": "", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                {"command": "MirrorJoint", "doubleClickCommand": "MirrorJointOptions", "iconName": ":/kinMirrorJoint_S.png", "toolTips": "mirrorJoint", "iconLabel": "", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                {"command": "OrientJoint", "doubleClickCommand": "OrientJointOptions", "iconName": ":/orientJoint.png", "toolTips": "OrientJointOptions", "iconLabel": "", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                ],
+        "Skin": [
+                {"command": "SmoothBindSkin", "doubleClickCommand": "SmoothBindSkinOptions", "iconName": ":/smoothSkin.png", "toolTips": "SmoothBindSkin", "iconLabel": "", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                {"command": "GoToBindPose", "doubleClickCommand": "", "iconName": ":/goToBindPose.png", "toolTips": "GoToBindPose", "iconLabel": "", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                {"command": "MirrorSkinWeights", "doubleClickCommand": "MirrorSkinWeightsOptions", "iconName": ":/mirrorSkinWeight.png", "toolTips": "MirrorSkinWeights", "iconLabel": "", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                {"command": "CopySkinWeights", "doubleClickCommand": "CopySkinWeightsOptions", "iconName": ":/copySkinWeight.png", "toolTips": "CopySkinWeights", "iconLabel": "", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                {"command": "SmoothSkinWeights", "doubleClickCommand": "SmoothSkinWeightsOptions", "iconName": ":/smoothSkinWeights.png", "toolTips": "CopySkinWeights", "iconLabel": "", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                {"command": "WeightHammer", "doubleClickCommand": "", "iconName": ":/menuIconSkinning.png", "toolTips": "WeightHammer", "iconLabel": "HSW", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                {"command": "CopyVertexWeights", "doubleClickCommand": "", "iconName": ":/menuIconSkinning.png", "toolTips": "CopyVertexWeights", "iconLabel": "CVW", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                {"command": "PasteVertexWeights", "doubleClickCommand": "", "iconName": ":/menuIconSkinning.png", "toolTips": "PasteVertexWeights", "iconLabel": "PVW", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                {"command": "AddInfluence", "doubleClickCommand": "AddInfluenceOptions", "iconName": ":/addWrapInfluence.png", "toolTips": "AddInfluence", "iconLabel": "", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                {"command": "RemoveInfluence", "doubleClickCommand": "", "iconName": ":/removeWrapInfluence.png", "toolTips": "RemoveInfluence", "iconLabel": "", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                {"command": "RemoveUnusedInfluences", "doubleClickCommand": "", "iconName": ":/menuIconSkinning.png", "toolTips": "RemoveUnusedInfluences", "iconLabel": "RUI", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                {"command": "NormalizeWeights", "doubleClickCommand": "", "iconName": ":/menuIconSkinning.png", "toolTips": "NormalizeWeights", "iconLabel": "NW", "iconLabelColor": [0.8, 0.8, 0.8], "labelBackground": [0.0, 0.0, 0.0], "backgroundTransparency": 0.5},
+                ]
+        }
 
 # ----------------------------------------------------------------------------------
 # メニュースタックウィジェット
 # ----------------------------------------------------------------------------------
-class MenuButton(QtWidgets.QPushButton):
-    def __init__(self, text, color=QtGui.QColor(255, 0, 0), parent=None):
-        super(MenuButton, self).__init__(text, parent)
-        self._color = QtGui.QColor(color)
-        self._toggle_color = self._adjust_color_brightness(self._color, 0.8)
-        
-        self.setAcceptDrops(True)
+class MenuItem(QtWidgets.QPushButton):
+    def __init__(self, text, color=QtGui.QColor(0, 0, 0), parent=None):
+        super(MenuItem, self).__init__(text, parent)
         self.setCheckable(True)
-        self.setFixedHeight(40)
-        self.setStyle()
-        
-        self.toggled.connect(self.setStyle)
-    
-    # override method
-    def mousePressEvent(self, event):
-        """ドラッグ開始処理"""
-        if event.button() == QtCore.Qt.LeftButton:
-            drag = QtGui.QDrag(self)
-            mime_data = QtCore.QMimeData()
-            mime_data.setText(self.text())
+        self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
 
-            drag.setMimeData(mime_data)
+        self.setStyleSheet("color: {}; text-align: left; padding: 5px;".format(color.name()))
+        self._default_style = "color: {}; text-align: left; padding: 5px;".format(color.name())
+        self._highlight_style = "background-color: lightblue; color: black; text-align: left; padding: 5px;"
 
-            pixmap = self.grab()  # ボタンのスナップショットを取得
-            drag.setPixmap(pixmap)
-            drag.setHotSpot(event.pos())  # ドラッグ時の位置調整
-
-            self.setStyleSheet("opacity: 0.5;")  # ドラッグ中は透明度を下げる
-
-            drag.exec_(QtCore.Qt.MoveAction)
-            self.setStyle()  # ドラッグ終了後にスタイルを戻す
-    
-    # public method
-    
-    # private method
-    def setStyle(self):
-        """ボタンのスタイルを適用"""
-        if self.isChecked():
-            bg_color = self._toggle_color
+    def setSelected(self, selected):
+        """選択時のハイライトを管理"""
+        if selected:
+            self.setStyleSheet(self._highlight_style)
         else:
-            bg_color = self._color
-
-        self.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {bg_color.name()};
-                color: white;
-                border-radius: 5px;
-                border: 2px solid {self._color.darker(150).name()};
-            }}
-            QPushButton:hover {{
-                background-color: {self._adjust_color_brightness(bg_color, 1.2).name()};
-            }}
-            QPushButton:pressed {{
-                background-color: {self._adjust_color_brightness(bg_color, 0.8).name()};
-            }}
-        """)
-
-    def _adjust_color_brightness(self, color, factor):
-        """カラーの明るさを調整"""
-        return QtGui.QColor(
-            min(255, int(color.red() * factor)),
-            min(255, int(color.green() * factor)),
-            min(255, int(color.blue() * factor))
-        )
+            self.setStyleSheet(self._default_style)
+            
+class MenuGroup(QtWidgets.QWidget):
+    menuClicked = QtCore.Signal(str)
     
-class VerticalMenu(QtWidgets.QWidget):
-    def __init__(self, parent=None):
-        """縦にトグルボタンを並べるメニュー"""
-        super(VerticalMenu, self).__init__(parent)
-        self._drop_line_y = None
-        self._drop_index = None
-         
-        self.setAcceptDrops(True)
+    def __init__(self, name, color=QtGui.QColor(255, 0, 0), parent=None):
+        super(MenuGroup, self).__init__(parent)
+        self._menus = []
+        self._menu_names = []
         
+        self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
+        # self.setStyleSheet("background-color: {}; border-radius: 5px;".format(color.name()))
+
         self.layout = QtWidgets.QVBoxLayout(self)
-        self.layout.setContentsMargins(5, 5, 5, 5)
-        self.layout.setSpacing(5)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.layout.setSpacing(0)
+
+        self.toggle_button = QtWidgets.QPushButton(name)
+        self.toggle_button.setCheckable(True)
+        self.toggle_button.setChecked(True)
+        # self.toggle_button.setStyleSheet("background-color: {}; text-align: left; font-weight: bold; padding: 5px;".format(color.name()))
+        self.toggle_button.clicked.connect(self._toggle_visibility)
+
+        self.menu_container = QtWidgets.QWidget()
+        self.menu_layout = QtWidgets.QVBoxLayout(self.menu_container)
+        self.menu_layout.setContentsMargins(15, 0, 0, 0)
+        self.menu_layout.setSpacing(2)
+        # self.menu_layout.addStretch(1)
+
+        self.layout.addWidget(self.toggle_button)
+        self.layout.addWidget(self.menu_container)
         
+        # アニメーション
+        self._anim = QtCore.QPropertyAnimation(self.menu_container, b"maximumHeight")
+        self._anim.setDuration(200)
 
-    def addMenuButton(self, text, color=QtGui.QColor(255, 0, 0)):
-        """メニューにボタンを追加"""
-        button = MenuButton(text, color)
-        self.layout.addWidget(button)
-        return button
-
-    def dragEnterEvent(self, event):
-        """ドラッグがメニュー上に入ったとき"""
-        self._updateDropIndicator(event.pos())
-        event.acceptProposedAction()
-
-    def dragMoveEvent(self, event):
-        """ドラッグ中にインジケータ位置を更新"""
-        self._updateDropIndicator(event.pos())
-        event.acceptProposedAction()
-
-    def dragLeaveEvent(self, event):
-        """ドラッグがメニューから離れたとき、インジケータをクリア"""
-        self._drop_line_y = None
-        self._drop_index = None
-        self.update()
-        event.accept()
-
-    def dropEvent(self, event):
-        """ドラッグ＆ドロップ処理"""
-        dragged_text = event.mimeData().text()
-        dragged_button = None
-
-        # 既存のボタンを探す
-        for i in range(self.layout.count()):
-            widget = self.layout.itemAt(i).widget()
-            if isinstance(widget, MenuButton) and widget.text() == dragged_text:
-                dragged_button = widget
-                break
-
-        if dragged_button:
-            # 位置を更新
-            self.layout.removeWidget(dragged_button)
-            self.layout.insertWidget(self._drop_index, dragged_button)
-
-        self._drop_line_y = None  # インジケータクリア
-        self._drop_index = None
-        self.update()
-
-    def findDropPosition(self, pos):
-        """ドロップ位置を計算"""
-        for i in range(self.layout.count()):
-            widget = self.layout.itemAt(i).widget()
-            if widget and pos.y() < widget.y() + widget.height() // 2:
-                return i
-        return self.layout.count()
+    # public method
+    def menuCount(self):
+        return len(self._menus)
     
-    def _updateDropIndicator(self, pos):
-        """ドロップ位置に基づきインジケータ位置（Y座標）を更新"""
-        index = self.findDropPosition(pos)
-        self._drop_index = index  # ドロップインデックスを更新
+    def index(self, menu):
+        return self._menus.index(menu)
+    
+    def indexFromName(self, name):
+        return self._menu_names.index(name)
 
-        if index == 0:
-            # インデックス0番目の場合、ボタンの上部に横線を描画
-            if self.layout.count() > 0:
-                widget = self.layout.itemAt(0).widget()
-                self._drop_line_y = widget.y()  # 上端に合わせる
+    def menu(self, row):
+        if not (0 <= row < len(self._menus)):
+            raise IndexError("Invalid index")
+        return self._menus[row]
+
+    def isExpanded(self):
+        return self.toggle_button.isChecked()
+
+    def addMenu(self, menu):
+        """メニューを追加"""
+        menu.clicked.connect(lambda: self.menuClicked.emit(menu.text()))
+        self.menu_layout.addWidget(menu)
+        self._menus.append(menu)
+        self._menu_names.append(menu.text())
+
+    def insertMenu(self, menu, row):
+        if not (0 <= row <= self.menuCount()):
+            raise IndexError("Invalid index")
+        
+        self.menu_layout.insertWidget(row, menu)
+        self._menus.insert(row, menu)
+        self._menu_names.insert(row, menu.text())
+        
+    def removeMenu(self, row):
+        """メニューを削除"""
+        if not (0 <= row <= self.menuCount()):
+            raise IndexError("Invalid index")
+        
+        menu = self._menus.pop(row)
+        self._menu_names.pop(row)
+        
+        self.menu_layout.removeWidget(menu)
+        menu.setParent(None)
+        
+        # メニューが空なら Stretch を追加
+        if self.menuCount() == 0:
+            self.menu_layout.addStretch(1)
+    
+    def setText(self, text):
+        self.toggle_button.setText(text)
+    
+    def setColor(self, color):
+        self.toggle_button.setStyleSheet("background-color: {}; text-align: left; font-weight: bold; padding: 5px;".format(color.name()))
+            
+    # private method
+    def _toggle_visibility(self):
+        """グループの展開・折りたたみをアニメーションで制御"""
+        if self.toggle_button.isChecked():
+            self.menu_container.setMaximumHeight(0)
+            self.menu_container.setVisible(True)
+            self._anim.setStartValue(0)
+            self._anim.setEndValue(self.menu_container.sizeHint().height())
         else:
-            if index < self.layout.count():
-                widget = self.layout.itemAt(index).widget()
-                if pos.y() < widget.y() + widget.height() // 2:
-                    # ドラッグしたボタンより上の位置にドロップする場合
-                    self._drop_line_y = widget.y()  # 上部に横線
-                else:
-                    # ドラッグしたボタンより下の位置にドロップする場合
-                    self._drop_line_y = widget.y() + widget.height()  # 下部に横線
-            else:
-                # 最後の場合は、最後のウィジェットの下端
-                if self.layout.count() > 0:
-                    widget = self.layout.itemAt(self.layout.count() - 1).widget()
-                    self._drop_line_y = widget.y() + widget.height()
+            self._anim.setStartValue(self.menu_container.height())
+            self._anim.setEndValue(0)
 
-        self.update()  # 再描画を要求
+        self._anim.start()
+        
+class MenuPage(QtWidgets.QWidget):
+    def __init__(self, parent=None):
+        super(MenuPage, self).__init__(parent)
+        
+        self._menus = []
+        self._menu_pages = {}
+        self._groups = []
+        self.selected_menu = None
+        
+        self.main_layout = QtWidgets.QHBoxLayout(self)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.menu_scroll_area = QtWidgets.QScrollArea()
+        self.menu_scroll_area.setWidgetResizable(True)
+        self.menu_scroll_area.setFixedWidth(200)
+        self.menu_scroll_area.setStyleSheet("")
+        
+        self.menu_container = QtWidgets.QWidget()
+        self.menu_layout = QtWidgets.QVBoxLayout(self.menu_container)
+        self.menu_layout.setContentsMargins(0, 0, 0, 0)
+        self.menu_layout.setSpacing(2)
+        self.menu_layout.addStretch(1)
+        self.menu_scroll_area.setWidget(self.menu_container)
+        
+        self.page_stack = QtWidgets.QStackedWidget()
+        
+        self.splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        
+        self.main_layout.addWidget(self.splitter)
+        self.splitter.addWidget(self.menu_scroll_area)
+        self.splitter.addWidget(self.page_stack)
+        
+        
+    # public method
+    def groupCount(self):
+        return len(self._groups)
+    
+    def groupIndexFromName(self, name):
+        keys = list(self._groups.keys())
+        return keys.index(name) if name in keys else -1
+    
+    def addMenuGroup(self, name, color):
+        """メニューグループを追加"""
+        group = MenuGroup(name, color)
+        group.menuClicked.connect(self.showPage)
+        self.menu_layout.insertWidget(self.menu_layout.count() - 1, group)
+        return group
 
-    def paintEvent(self, event):
-        """通常の描画に加えて、ドロップインジケータ（横線）を描画"""
-        super(VerticalMenu, self).paintEvent(event)
-        if self._drop_line_y is not None:
-            painter = QtGui.QPainter(self)
-            pen = QtGui.QPen(QtGui.QColor("blue"))
-            pen.setWidth(2)
-            painter.setPen(pen)
-            painter.drawLine(0, self._drop_line_y, self.width(), self._drop_line_y)
+    def addMenu(self, group, menu_item):
+        """メニューを追加してページを作成"""
+        group.addMenu(menu_item)
 
+        # メニューに対応するページを作成
+        page = QtWidgets.QLabel(f"{menu_item.text()} のページ", alignment=QtCore.Qt.AlignCenter)
+        self.page_stack.addWidget(page)
+        self._menu_pages[menu_item.text()] = page
+    
+    def insertGroup(self, name, index):
+        if 0 >= index >= self.groupCount():
+            raise IndexError("")
+        
+        menu_group = MenuGroup(name)
+        self.menu_layout.insertWidget(index, menu_group)
+    
+    def insertMenu(self, name, index, group):
+        if 0 >= index >= self.menuCount(group):
+            raise IndexError("")
 
+        pass
+    
+    def removeGroup(self, index):
+        if 0 >= index >= self.groupCount():
+            raise IndexError("")
 
+        pass
+    
+    def removeMenu(self, index, group):
+        if 0 >= index >= self.menuCount(group):
+            raise IndexError("")
 
+        pass
+    
+    def showPage(self, menu_name):
+        """メニューをクリックしたら対応するページを表示"""
+        if menu_name in self._menu_pages:
+            self.page_stack.setCurrentWidget(self._menu_pages[menu_name])
 
-
+            # メニューの選択状態を変更
+            self.setSelectedMenu(menu_name)
+            
+    def setSelectedMenu(self, menu_name):
+        """選択されたメニューの背景色を変更"""
+        for group in self.menu_container.children():
+            if isinstance(group, MenuGroup):
+                for i in range(group.menuCount()):
+                    menu = group.menu(i)
+                    menu.setSelected(menu.text() == menu_name) 
