@@ -81,8 +81,8 @@ class CollapsibleFrame(QtWidgets.QWidget):
         self.main_layout.addWidget(self.frame)
 
         # アニメーション
-        # self.frame_animation = QtCore.QPropertyAnimation(self.frame, b"geometry")
-        self.frame_animation = QtCore.QPropertyAnimation(self.frame, b"maximumHeight")
+        self.frame_animation = QtCore.QPropertyAnimation(self.frame, b"geometry")
+        # self.frame_animation = QtCore.QPropertyAnimation(self.frame, b"maximumHeight")
         self.frame_animation.setDuration(200)
         
         self.icon_animation = QtCore.QVariantAnimation()
@@ -383,12 +383,25 @@ class CollapsibleFrame(QtWidgets.QWidget):
         if self._is_animation_enabled:
             # 展開と折りたたみのアニメーション
             if self._is_collapsed:
-                self.frame_animation.setStartValue(self.frame.height())
-                self.frame_animation.setEndValue(0)
+                start_rect = QtCore.QRect(self.frame.geometry().x(), self.frame.geometry().y(), self.frame.width(), self.frame.height())
+                end_rect = QtCore.QRect(self.frame.geometry().x(), self.frame.geometry().y(), self.frame.width(), 0)
+                self.frame_animation.setStartValue(start_rect)
+                self.frame_animation.setEndValue(end_rect)                
+                # self.frame_animation.setStartValue(self.frame.height())
+                # self.frame_animation.setEndValue(0)
+                self.frame_animation.finished.connect(lambda *args: self.frame.setVisible(not self._is_collapsed))
             else:
-                self.frame_animation.setStartValue(0)
-                self.frame_animation.setEndValue(max(self._getContentHeight(), self.frame_geometry.height()))
+                
+                start_rect = QtCore.QRect(self.frame.geometry().x(), self.frame.geometry().y(), self.frame.width(), self.frame.height())
+                end_rect = QtCore.QRect(self.frame.geometry().x(), self.frame.geometry().y(), self.frame.width(), max(self._getContentHeight(), self.frame.sizeHint().height(), self.height()-self._title_bar_height))
+                self.frame_animation.setStartValue(start_rect)
+                self.frame_animation.setEndValue(end_rect)
+                
+                # self.frame_animation.setStartValue(0)
+                # self.frame_animation.setEndValue(max(self._getContentHeight(), self.frame_geometry.height()))
+                self.frame.setVisible(not self._is_collapsed)
 
+                
             self.frame_animation.start()
             
             # アイコン回転のアニメーション
